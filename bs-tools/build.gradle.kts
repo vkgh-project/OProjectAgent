@@ -12,3 +12,14 @@ dependencies {
     api(project(":bs-engine"))
     api(project(":bs-session"))
 }
+
+/**
+ * Runs the headless runner: `./gradlew :bs-tools:runTools --args="--seed 1 --rounds 5 --report out.txt"`.
+ */
+val runTools by tasks.registering(JavaExec::class) {
+    group = "application"
+    description = "Runs the headless Battle Sim runner (bs-tools)."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("ua.battlesim.tools.BattleSimRunner")
+}
+

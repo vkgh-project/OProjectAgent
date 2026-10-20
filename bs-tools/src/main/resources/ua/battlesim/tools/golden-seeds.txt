@@ -1,0 +1,19 @@
+# Golden seeds for the bs-tools headless runner (determinism baseline).
+#
+# One line per master seed:  <seed> <tab> <outcome> <tab> <stateHash>
+#
+#   * seed      the deterministic master seed of the round
+#   * outcome   the engine outcome of round 1
+#   * stateHash the engine's 64-bit state hash at the end of round 1
+#
+# Generated with the fixed BattleSimRunner.goldenConfig() (standard parameters,
+# round length bounded to 2000 ticks). Regenerate with:
+#   ./gradlew :bs-tools:runTools --args="--golden"
+#
+# The golden-seed test FAILS when any of these values changes, which signals a
+# non-deterministic or behavioural change in the simulation pipeline.
+1	DRAW_TIME	-4746963212507906246
+2	DRAW_TIME	2076454253068586100
+3	DRAW_TIME	-3424096557209200538
+4	DRAW_TIME	-1595813554034095164
+5	DRAW_TIME	-5183666308523099533
