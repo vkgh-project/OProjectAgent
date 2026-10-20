@@ -7,7 +7,6 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.opengl.GL33.glVertexAttribDivisor;
 import static org.lwjgl.opengl.GL33.glDrawArraysInstanced;
-import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * An instanced GPU mesh with per-instance data.
@@ -45,21 +44,17 @@ public final class InstancedMesh implements AutoCloseable {
         glBindVertexArray(vaoId);
 
         glBindBuffer(GL_ARRAY_BUFFER, vboId);
-        try (org.lwjgl.system.MemoryStack stack = stackPush()) {
-            FloatBuffer buf = stack.mallocFloat(vertices.length);
-            buf.put(vertices).flip();
-            glBufferData(GL_ARRAY_BUFFER, buf, GL_STATIC_DRAW);
-        }
+        FloatBuffer buf = org.lwjgl.BufferUtils.createFloatBuffer(vertices.length);
+        buf.put(vertices).flip();
+        glBufferData(GL_ARRAY_BUFFER, buf, GL_STATIC_DRAW);
         int stride = components * 4;
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, components, GL_FLOAT, false, stride, 0);
 
         glBindBuffer(GL_ARRAY_BUFFER, iboId);
-        try (org.lwjgl.system.MemoryStack stack = stackPush()) {
-            FloatBuffer buf = stack.mallocFloat(instanceData.length);
-            buf.put(instanceData).flip();
-            glBufferData(GL_ARRAY_BUFFER, buf, GL_STATIC_DRAW);
-        }
+        FloatBuffer instBuf = org.lwjgl.BufferUtils.createFloatBuffer(instanceData.length);
+        instBuf.put(instanceData).flip();
+        glBufferData(GL_ARRAY_BUFFER, instBuf, GL_STATIC_DRAW);
         int instStride = instanceStride * 4;
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, instanceStride, GL_FLOAT, false, instStride, 0);

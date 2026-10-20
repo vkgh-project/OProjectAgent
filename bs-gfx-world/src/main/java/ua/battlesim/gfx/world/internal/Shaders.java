@@ -11,7 +11,7 @@ package ua.battlesim.gfx.world.internal;
  *   <li>terrain: loc 0 pos(3), 1 normal(3), 2 swamp(1), 3 forest(1), 4 shade(1)</li>
  *   <li>water: loc 0 pos(3), 1 flow/depth(3)</li>
  *   <li>road/bridge: loc 0 pos(3), 1 normal(3)</li>
- *   <li>props: loc 0 pos(3), 1 normal(3), 2 instance(7)</li>
+ *   <li>props: loc 0 pos(3), 1 normal(3), 2 instance pos(3), 3 instance params(4)</li>
  * </ul>
  *
  * <p>The shaders implement the requested features: procedural grass/dirt/rock,
@@ -221,7 +221,8 @@ public final class Shaders {
                 #version 330 core
                 layout(location = 0) in vec3 aPos;
                 layout(location = 1) in vec3 aNormal;
-                layout(location = 2) in vec7 aInstance;
+                layout(location = 2) in vec3 aInstancePos;
+                layout(location = 3) in vec4 aInstanceParams;
                 uniform mat4 uViewProj;
                 uniform vec3 uCamPos;
                 uniform float uTime;
@@ -234,12 +235,12 @@ public final class Shaders {
                 out float vTint;
                 out float vIsTree;
                 void main() {
-                    float ix = aInstance.x;
-                    float iy = aInstance.y;
-                    float iz = aInstance.z;
-                    float scale = aInstance.w;
-                    float rot = aInstance.u;
-                    float tint = aInstance.v;
+                    float ix = aInstancePos.x;
+                    float iy = aInstancePos.y;
+                    float iz = aInstancePos.z;
+                    float scale = aInstanceParams.x;
+                    float rot = aInstanceParams.y;
+                    float tint = aInstanceParams.z;
                     float c = cos(rot);
                     float s = sin(rot);
                     vec3 local = vec3(c * aPos.x - s * aPos.z, aPos.y, s * aPos.x + c * aPos.z)

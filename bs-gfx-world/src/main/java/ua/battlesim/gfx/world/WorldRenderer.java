@@ -199,10 +199,13 @@ public final class WorldRenderer implements AutoCloseable {
         waterVao = new Vao(waterGeometry.vertices(), waterGeometry.stride(), flatAttrs);
         roadVao = new Vao(roadGeometry.vertices(), roadGeometry.stride(), flatAttrs);
         bridgeVao = new Vao(bridgeGeometry.vertices(), bridgeGeometry.stride(), flatAttrs);
+        List<Vao.Attribute> propInstAttrs = List.of(
+                new Vao.Attribute(PropMeshBuilder.INSTANCE_LOCATION, 3),
+                new Vao.Attribute(PropMeshBuilder.INSTANCE_PARAMS_LOCATION, 4));
         treeVao = new Vao(trees.baseVertices(), trees.baseStride(), flatAttrs,
-                trees.instanceData(), PropMeshBuilder.INSTANCE_STRIDE, PropMeshBuilder.INSTANCE_LOCATION);
+                trees.instanceData(), PropMeshBuilder.INSTANCE_STRIDE, propInstAttrs);
         rockVao = new Vao(rocks.baseVertices(), rocks.baseStride(), flatAttrs,
-                rocks.instanceData(), PropMeshBuilder.INSTANCE_STRIDE, PropMeshBuilder.INSTANCE_LOCATION);
+                rocks.instanceData(), PropMeshBuilder.INSTANCE_STRIDE, propInstAttrs);
         gpuReady = true;
     }
 

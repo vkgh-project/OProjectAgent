@@ -1,6 +1,6 @@
 plugins { `java-library` }
 
-val lwjglVersion = "3.3.3"
+val lwjglVersion = "3.4.3"
 val jomlVersion = "1.10.9"
 
 dependencies {

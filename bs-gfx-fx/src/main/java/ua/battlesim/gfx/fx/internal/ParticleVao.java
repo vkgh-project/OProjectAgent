@@ -14,7 +14,6 @@ import static org.lwjgl.opengl.GL20.glVertexAttribPointer;
 import static org.lwjgl.opengl.GL30.glBindVertexArray;
 import static org.lwjgl.opengl.GL30.glDeleteVertexArrays;
 import static org.lwjgl.opengl.GL30.glGenVertexArrays;
-import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * A GPU dynamic vertex array for billboarded effect particles.
@@ -80,11 +79,9 @@ public final class ParticleVao implements AutoCloseable {
             return;
         }
         glBindBuffer(GL_ARRAY_BUFFER, vboId);
-        try (org.lwjgl.system.MemoryStack stack = stackPush()) {
-            FloatBuffer buf = stack.mallocFloat(data.length);
-            buf.put(data).flip();
-            glBufferData(GL_ARRAY_BUFFER, buf, GL_DYNAMIC_DRAW);
-        }
+        FloatBuffer buf = org.lwjgl.BufferUtils.createFloatBuffer(data.length);
+        buf.put(data).flip();
+        glBufferData(GL_ARRAY_BUFFER, buf, GL_DYNAMIC_DRAW);
     }
 
     /** @return the number of particles currently uploaded */

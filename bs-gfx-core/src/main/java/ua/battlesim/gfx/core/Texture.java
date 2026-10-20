@@ -4,7 +4,6 @@ import java.nio.ByteBuffer;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
-import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * A GPU 2D texture.
@@ -22,11 +21,9 @@ public final class Texture implements AutoCloseable {
 
         this.id = glGenTextures();
         glBindTexture(GL_TEXTURE_2D, id);
-        try (org.lwjgl.system.MemoryStack stack = stackPush()) {
-            ByteBuffer buf = stack.malloc(data.length);
-            buf.put(data).flip();
-            glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, buf);
-        }
+        ByteBuffer buf = org.lwjgl.BufferUtils.createByteBuffer(data.length);
+        buf.put(data).flip();
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, buf);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

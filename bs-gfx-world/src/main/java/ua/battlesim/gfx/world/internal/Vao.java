@@ -18,7 +18,6 @@ import static org.lwjgl.opengl.GL30.glDeleteVertexArrays;
 import static org.lwjgl.opengl.GL30.glGenVertexArrays;
 import static org.lwjgl.opengl.GL33.glDrawArraysInstanced;
 import static org.lwjgl.opengl.GL33.glVertexAttribDivisor;
-import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * A GPU vertex array object (VAO/VBO) with an arbitrary interleaved attribute
@@ -64,7 +63,7 @@ public final class Vao implements AutoCloseable {
      * @param attributes the vertex attributes, in layout order
      */
     public Vao(float[] vertices, int stride, List<Attribute> attributes) {
-        this(vertices, stride, attributes, null, 1, 0);
+        this(vertices, stride, attributes, null, 1, List.of());
     }
 
     /**
@@ -75,10 +74,10 @@ public final class Vao implements AutoCloseable {
      * @param attributes      the base vertex attributes, in layout order
      * @param instanceData    per-instance floats, or null for a non-instanced mesh
      * @param instanceStride  number of floats per instance (ignored when not instanced)
-     * @param instanceLocation the shader location of the instance attribute
+     * @param instanceAttributes the instance vertex attributes, in layout order
      */
     public Vao(float[] vertices, int stride, List<Attribute> attributes,
-               float[] instanceData, int instanceStride, int instanceLocation) {
+               float[] instanceData, int instanceStride, List<Attribute> instanceAttributes) {
         if (vertices == null) {
             throw new IllegalArgumentException("vertices must not be null");
         }
@@ -93,11 +92,23 @@ public final class Vao implements AutoCloseable {
         }
         this.instanced = instanceData != null;
         if (instanced) {
+            if (instanceAttributes == null || instanceAttributes.isEmpty()) {
+                throw new IllegalArgumentException("instanceAttributes must not be empty");
+            }
             if (instanceStride < 1) {
                 throw new IllegalArgumentException("instanceStride must be >= 1: " + instanceStride);
             }
             if (instanceData.length % instanceStride != 0) {
                 throw new IllegalArgumentException("instance data not a multiple of instanceStride");
+            }
+            int totalComponents = 0;
+            for (Attribute attribute : instanceAttributes) {
+                totalComponents += attribute.components();
+            }
+            if (totalComponents != instanceStride) {
+                throw new IllegalArgumentException(
+                        "instance attribute components (" + totalComponents
+                                + ") must equal instanceStride (" + instanceStride + ")");
             }
         }
 
@@ -111,11 +122,9 @@ public final class Vao implements AutoCloseable {
         glBindVertexArray(vaoId);
 
         glBindBuffer(GL_ARRAY_BUFFER, vboId);
-        try (org.lwjgl.system.MemoryStack stack = stackPush()) {
-            FloatBuffer buf = stack.mallocFloat(vertices.length);
-            buf.put(vertices).flip();
-            glBufferData(GL_ARRAY_BUFFER, buf, GL_STATIC_DRAW);
-        }
+        FloatBuffer buf = org.lwjgl.BufferUtils.createFloatBuffer(vertices.length);
+        buf.put(vertices).flip();
+        glBufferData(GL_ARRAY_BUFFER, buf, GL_STATIC_DRAW);
         int byteStride = stride * 4;
         int offset = 0;
         for (Attribute attribute : attributes) {
@@ -127,15 +136,17 @@ public final class Vao implements AutoCloseable {
 
         if (instanced) {
             glBindBuffer(GL_ARRAY_BUFFER, instanceVboId);
-            try (org.lwjgl.system.MemoryStack stack = stackPush()) {
-                FloatBuffer buf = stack.mallocFloat(instanceData.length);
-                buf.put(instanceData).flip();
-                glBufferData(GL_ARRAY_BUFFER, buf, GL_STATIC_DRAW);
+            FloatBuffer instBuf = org.lwjgl.BufferUtils.createFloatBuffer(instanceData.length);
+            instBuf.put(instanceData).flip();
+            glBufferData(GL_ARRAY_BUFFER, instBuf, GL_STATIC_DRAW);
+            int ioffset = 0;
+            for (Attribute ia : instanceAttributes) {
+                glEnableVertexAttribArray(ia.location());
+                glVertexAttribPointer(ia.location(), ia.components(), GL_FLOAT,
+                        false, instanceStride * 4, ioffset);
+                glVertexAttribDivisor(ia.location(), 1);
+                ioffset += ia.components() * 4;
             }
-            glEnableVertexAttribArray(instanceLocation);
-            glVertexAttribPointer(instanceLocation, instanceStride, GL_FLOAT,
-                    false, instanceStride * 4, 0);
-            glVertexAttribDivisor(instanceLocation, 1);
         }
 
         glBindVertexArray(0);

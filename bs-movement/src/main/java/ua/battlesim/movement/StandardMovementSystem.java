@@ -123,6 +123,22 @@ public final class StandardMovementSystem implements MovementSystem {
     /** Per-unit pursuit state, keyed by unit id (accessed by id only). */
     private final Map<Integer, Motion> motions = new HashMap<>();
 
+    /**
+     * The tick of the most recent {@link #step} call.
+     *
+     * <p>Within one round the engine hands the movement step strictly
+     * increasing ticks; when a new round starts the tick counter resets to a
+     * low value again. Because the per-unit pursuit state is only meaningful
+     * for the units of the round it was created in (a new round always hands
+     * us fresh unit objects that happen to reuse the same ids), the map must
+     * be discarded at a round boundary. {@code tick <= lastStepTick} therefore
+     * reliably marks "this is the first step of a (new) round", which clears
+     * the stale pursuit state so that {@code step} stays a pure function of
+     * its arguments (per the {@link MovementSystem} contract) even when the
+     * same instance is shared across rounds by the engine factory / session.
+     */
+    private int lastStepTick = Integer.MAX_VALUE;
+
     @Override
     public void step(int tick, List<UnitData> units, Terrain t, WeatherModel w) {
         if (tick < 0) {
@@ -131,6 +147,15 @@ public final class StandardMovementSystem implements MovementSystem {
         Objects.requireNonNull(units, "units");
         Objects.requireNonNull(t, "terrain");
         Objects.requireNonNull(w, "weather");
+        // A round's ticks strictly increase, then reset to a low value when the
+        // next round starts. When that happens the fresh round's units reuse the
+        // same ids, so drop the previous round's pursuit state: this keeps the
+        // step a pure function of its arguments when the same system instance
+        // is shared across rounds (see {@link #lastStepTick}).
+        if (tick <= lastStepTick) {
+            motions.clear();
+        }
+        lastStepTick = tick;
         List<UnitData> ordered = new ArrayList<>(units);
         ordered.sort(Comparator.comparingInt(UnitData::id));
         dropStaleMotions(ordered);

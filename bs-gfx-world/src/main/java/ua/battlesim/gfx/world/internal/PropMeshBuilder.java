@@ -30,8 +30,11 @@ public final class PropMeshBuilder {
     /** Number of floats per instance: x,y,z,scale,rotation,tint,kind. */
     public static final int INSTANCE_STRIDE = 7;
 
-    /** The shader location of the per-instance attribute. */
+    /** The shader location of the per-instance position attribute (vec3). */
     public static final int INSTANCE_LOCATION = 2;
+
+    /** The shader location of the per-instance params attribute (vec4). */
+    public static final int INSTANCE_PARAMS_LOCATION = 3;
 
     /** Base geometry vertex count for a tree (trunk 24 + foliage 48). */
     public static final int TREE_BASE_VERTEX_COUNT = 72;

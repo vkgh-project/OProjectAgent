@@ -39,7 +39,7 @@ public final class FxShaders {
                     else if (gl_VertexID == 1) { c = vec2(1.0, -1.0); }
                     else if (gl_VertexID == 2) { c = vec2(1.0, 1.0); }
                     else { c = vec2(-1.0, 1.0); }
-                    vec3 world = aPos + (uRight * c.x + uUp * c.y) * aSize;
+                    vec3 world = aPos + uRight * c.x * aSize.x + uUp * c.y * aSize.y;
                     gl_Position = uViewProj * vec4(world, 1.0);
                     vColor = aColor;
                 }

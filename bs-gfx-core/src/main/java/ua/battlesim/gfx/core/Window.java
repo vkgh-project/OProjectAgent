@@ -7,6 +7,7 @@ import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWScrollCallback;
 import org.lwjgl.glfw.GLFWFramebufferSizeCallback;
 import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.opengl.GL;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.glViewport;
@@ -92,6 +93,31 @@ public final class Window implements AutoCloseable {
             throw new IllegalStateException("Failed to create GLFW window");
 
         glfwMakeContextCurrent(handle);
+
+        // Fail fast, with an actionable message, when the environment cannot provide a
+        // usable OpenGL context (e.g. a headless session, a remote/RDP session, or a
+        // virtualized GPU). Some drivers still return a window handle in those cases,
+        // so we verify the context is actually current BEFORE any GL call: otherwise the
+        // first GL call below (glViewport in updateSize) is a native-level fatal abort
+        // issued by lwjgl.dll that cannot be caught from Java.
+        if (glfwGetCurrentContext() == 0L) {
+            throw new IllegalStateException(
+                    "An OpenGL window was created, but no context could be made current "
+                    + "(glfwGetCurrentContext() == 0). This usually means the system has "
+                    + "no usable hardware OpenGL -- e.g. a headless session, a remote/RDP "
+                    + "session, or a virtualized GPU. Windowed mode requires a real GPU "
+                    + "with an OpenGL 3.3 core context. On this machine, run headless "
+                    + "instead (omit --windowed).");
+        }
+
+        // LWJGL tracks the current GL context in its own per-thread GLContext, which is
+        // only bound once GL.createCapabilities() is called. glfwMakeContextCurrent()
+        // alone (which is why glfwGetCurrentContext() above is non-zero) is NOT enough:
+        // without this call the very first GL call (glViewport in updateSize below) trips
+        // LWJGL's native fatal check "No context is current" and aborts the JVM. Call it
+        // exactly once per context, right after making the context current.
+        GL.createCapabilities();
+
         glfwSwapInterval(1);
 
         setupCallbacks();
