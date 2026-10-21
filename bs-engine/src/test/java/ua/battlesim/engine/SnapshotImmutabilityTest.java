@@ -39,7 +39,7 @@ final class SnapshotImmutabilityTest {
         FakeMovementSystem movement = new FakeMovementSystem();
         movement.setMoveOffset(5.0);
 
-        Engine engine = new DefaultEngineFactory(combat, movement).start(setup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(setup(), config());
 
         // Tick once (still in ready phase since readyTicks=2)
         engine.tick();
@@ -62,7 +62,7 @@ final class SnapshotImmutabilityTest {
         FakeCombatSystem combat = new FakeCombatSystem();
         FakeMovementSystem movement = new FakeMovementSystem();
 
-        Engine engine = new DefaultEngineFactory(combat, movement).start(setup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(setup(), config());
         engine.tick();
         RenderSnapshot snap = engine.snapshot();
 
@@ -82,7 +82,7 @@ final class SnapshotImmutabilityTest {
                         UnitState.READY, 0, 0.0, -1)),
                 new FakeWeather());
 
-        Engine engine = new DefaultEngineFactory(combat, movement).start(setup7, config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(setup7, config());
         engine.tick();
         assertEquals(7, engine.snapshot().roundNumber());
     }
@@ -99,7 +99,7 @@ final class SnapshotImmutabilityTest {
                 UnitState.READY, 0, 0.0, -1);
         RoundSetup s = new RoundSetup(1, 42L, FakeTerrain.flat(), List.of(blue, red), weather);
 
-        Engine engine = new DefaultEngineFactory(combat, movement).start(s, config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(s, config());
         engine.tick();
         var snap = engine.snapshot();
 

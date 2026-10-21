@@ -128,7 +128,8 @@ class PickerTest {
         var snapshot = new RenderSnapshot(1, 0, 0.0, units,
                 new WeatherState(0, 0, 0, 0, 0, 0, 0, 0, 0));
         return new SessionView(Phase.RUNNING, 1, makeTerrain(), snapshot, 0.0,
-                new Stats(0, 0), List.of(), false, 1.0);
+                new Stats(0, 0), List.of(), false, 1.0,
+                new GenerationStatus(2, false, null));
     }
 
     private static Terrain makeTerrain() {

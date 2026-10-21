@@ -10,8 +10,10 @@ import java.util.Optional;
 import org.joml.Vector3f;
 
 import ua.battlesim.api.RenderSnapshot;
+import ua.battlesim.api.SessionEvent;
 import ua.battlesim.api.SessionView;
 import ua.battlesim.api.SimConfig;
+import ua.battlesim.api.SimEvent;
 import ua.battlesim.api.UnitView;
 import ua.battlesim.api.WeatherState;
 import ua.battlesim.gfx.core.InputRouter;
@@ -163,7 +165,12 @@ public final class WindowedGame implements AutoCloseable {
             double effectDelta = StrictMath.max(0.0, simSeconds - lastSimSeconds);
             lastSimSeconds = simSeconds;
 
-            effects.onEvents(view.events(), snapshot);
+            // Consume the session's pending events exactly once (view() is
+            // read-only and would otherwise re-deliver them every frame).
+            List<SimEvent> simEvents = session.drainEvents().stream()
+                    .map(SessionEvent::event)
+                    .toList();
+            effects.onEvents(simEvents, snapshot);
             effects.update(effectDelta);
 
             // 4) render: sky, world, units, effects, HUD

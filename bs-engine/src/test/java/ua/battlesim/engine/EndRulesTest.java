@@ -49,7 +49,7 @@ final class EndRulesTest {
         combat.setNextAttacks(List.of(new Attack(1, 0, 100, true)));
 
         FakeMovementSystem movement = new FakeMovementSystem();
-        Engine engine = new DefaultEngineFactory(combat, movement).start(standardSetup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(standardSetup(), config());
 
         // Advance past ready phase
         for (int i = 0; i < READY_TICKS; i++) engine.tick();
@@ -74,7 +74,7 @@ final class EndRulesTest {
         combat.setNextAttacks(List.of(new Attack(0, 1, 100, true)));
 
         FakeMovementSystem movement = new FakeMovementSystem();
-        Engine engine = new DefaultEngineFactory(combat, movement).start(standardSetup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(standardSetup(), config());
 
         for (int i = 0; i < READY_TICKS; i++) engine.tick();
         engine.tick();
@@ -92,7 +92,7 @@ final class EndRulesTest {
                 new Attack(1, 0, 100, true)));
 
         FakeMovementSystem movement = new FakeMovementSystem();
-        Engine engine = new DefaultEngineFactory(combat, movement).start(standardSetup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(standardSetup(), config());
 
         for (int i = 0; i < READY_TICKS; i++) engine.tick();
         engine.tick();
@@ -105,7 +105,7 @@ final class EndRulesTest {
     void maxTicksReachedIsDrawTime() {
         FakeCombatSystem combat = new FakeCombatSystem();
         FakeMovementSystem movement = new FakeMovementSystem();
-        Engine engine = new DefaultEngineFactory(combat, movement).start(standardSetup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(standardSetup(), config());
 
         // Advance to maxRoundTicks
         for (int i = 0; i < MAX_TICKS; i++) engine.tick();
@@ -120,7 +120,7 @@ final class EndRulesTest {
         combat.setNextAttacks(List.of(new Attack(1, 0, 100, true)));
 
         FakeMovementSystem movement = new FakeMovementSystem();
-        Engine engine = new DefaultEngineFactory(combat, movement).start(standardSetup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(standardSetup(), config());
 
         for (int i = 0; i < READY_TICKS; i++) engine.tick();
         engine.tick(); // this kills blue, round ends
@@ -133,7 +133,7 @@ final class EndRulesTest {
     void outcomeThrowsWhenNotFinished() {
         FakeCombatSystem combat = new FakeCombatSystem();
         FakeMovementSystem movement = new FakeMovementSystem();
-        Engine engine = new DefaultEngineFactory(combat, movement).start(standardSetup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(standardSetup(), config());
         engine.tick(); // still in ready phase
         assertFalse(engine.finished());
         assertThrows(IllegalStateException.class, engine::outcome);

@@ -28,6 +28,16 @@ import ua.battlesim.api.WeatherModel;
  * <p>Per tick sequence: advance tick, save prev values, weather.step,
  * combat.resolve + events, movement.step, check end conditions.
  *
+ * <p>Ownership: the engine deep-copies the round's units (mutating the
+ * {@link RoundSetup}'s unit list never happens), owns the combat and
+ * movement systems handed to it by the engine factory and drives the round's
+ * own weather model — an engine must therefore only interleave with another
+ * engine that owns its own fresh round setup (fresh units and weather).
+ *
+ * <p>Events: one {@link AttackEvent} per shot; exactly one
+ * {@link UnitDestroyedEvent} per alive-to-destroyed transition, with the
+ * killer being the lowest attacker id among the unit's killers this tick.
+ *
  * <p>Determinism: units processed in ascending id order; no wall clock.
  */
 public final class DefaultEngine implements Engine {
@@ -59,7 +69,10 @@ public final class DefaultEngine implements Engine {
         this.combatSystem = combatSystem;
         this.movementSystem = movementSystem;
 
-        this.units = new ArrayList<>(setup.units());
+        this.units = new ArrayList<>(setup.units().size());
+        for (UnitData source : setup.units()) {
+            this.units.add(copyOf(source));
+        }
         Collections.sort(this.units, (a, b) -> Integer.compare(a.id(), b.id()));
 
         int n = units.size();
@@ -97,10 +110,27 @@ public final class DefaultEngine implements Engine {
             for (Attack a : attacks) {
                 pendingEvents.add(
                         new AttackEvent(tick, a.attackerId(), a.targetId(), a.damage(), a.killed()));
-                if (a.killed()) {
-                    UnitData killer = findUnitById(a.attackerId());
-                    pendingEvents.add(new UnitDestroyedEvent(tick, a.targetId(),
-                            a.attackerId(), killer.side()));
+            }
+            // Exactly one destruction event per victim destroyed this tick,
+            // killer = the lowest attacker id among its killers.
+            int n = units.size();
+            int[] killerFor = new int[n];
+            java.util.Arrays.fill(killerFor, -1);
+            for (Attack a : attacks) {
+                if (!a.killed()) {
+                    continue;
+                }
+                int idx = indexById(a.targetId());
+                if (killerFor[idx] < 0 || a.attackerId() < killerFor[idx]) {
+                    killerFor[idx] = a.attackerId();
+                }
+            }
+            for (int i = 0; i < n; i++) {
+                if (killerFor[i] >= 0) {
+                    UnitData victim = units.get(i);
+                    UnitData killer = findUnitById(killerFor[i]);
+                    pendingEvents.add(new UnitDestroyedEvent(tick, victim.id(),
+                            killerFor[i], killer.side()));
                 }
             }
             movementSystem.step(tick, units, terrain, weather);
@@ -223,6 +253,21 @@ public final class DefaultEngine implements Engine {
             }
         }
         throw new IllegalArgumentException("No unit with id " + id);
+    }
+
+    private int indexById(int id) {
+        for (int i = 0; i < units.size(); i++) {
+            if (units.get(i).id() == id) {
+                return i;
+            }
+        }
+        throw new IllegalArgumentException("No unit with id " + id);
+    }
+
+    /** Copies a unit so the engine never mutates the setup's unit objects. */
+    private static UnitData copyOf(UnitData u) {
+        return new UnitData(u.id(), u.side(), u.type(), u.x(), u.z(), u.heading(), u.aim(),
+                u.health(), u.state(), u.cooldown(), u.odometer(), u.destroyedTick());
     }
 
     // ---- package-private accessors for testing ----

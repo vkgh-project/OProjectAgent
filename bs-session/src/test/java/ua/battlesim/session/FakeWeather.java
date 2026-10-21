@@ -22,7 +22,7 @@ final class FakeWeather implements WeatherModel {
     }
 
     @Override
-    public double visibility() {
+    public double visibilityMetres() {
         return 1.0;
     }
 

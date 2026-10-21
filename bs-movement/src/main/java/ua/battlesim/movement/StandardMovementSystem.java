@@ -12,6 +12,7 @@ import java.util.Optional;
 import ua.battlesim.api.MovementSystem;
 import ua.battlesim.api.NavGrid;
 import ua.battlesim.api.PathPlanner;
+import ua.battlesim.api.SimConfig;
 import ua.battlesim.api.Terrain;
 import ua.battlesim.api.UnitData;
 import ua.battlesim.api.UnitInfo;
@@ -27,10 +28,12 @@ import ua.battlesim.api.WeatherModel;
  * of the order the engine passes them in):
  * <ol>
  * <li>Every active unit that is not {@link UnitState#ATTACKING} pursues a
- *     target: the nearest enemy (opposite side) on the same nav component
- *     for which the terrain planner has a path. The chosen target is kept
- *     until another enemy is at least 40 percent closer (hysteresis), so
- *     small distance changes do not make units flip-flop between targets.</li>
+ *     target: the nearest living enemy (opposite side, active) on the same
+ *     nav component for which the terrain planner has a path. A target that
+ *     was destroyed since the last tick is rejected and re-acquired. The
+ *     chosen target is kept until another enemy is at least 40 percent
+ *     closer (hysteresis), so small distance changes do not make units
+ *     flip-flop between targets.</li>
  * <li>The path is replanned when the unit first acquires or switches the
  *     target, when the target moved more than 150 m since the last plan, or
  *     when the unit's personal replan interval has elapsed. The interval is
@@ -38,9 +41,10 @@ import ua.battlesim.api.WeatherModel;
  *     (100 + id % 5 x 10). Waypoints are considered reached within 6 m.</li>
  * <li>A unit within weapon range of its target (min of the type range x
  *     weather combat factor and the weather visibility, the same effective
- *     range the combat system uses) holds position
- *     ({@link UnitState#READY}); a unit without a reachable enemy holds
- *     position ({@link UnitState#WAITING}); a unit on a path is
+ *     range the combat system uses) with a clear line of sight to it holds
+ *     position ({@link UnitState#READY}); a unit in range but without a
+ *     clear line of sight keeps pursuing; a unit without a reachable enemy
+ *     holds position ({@link UnitState#WAITING}); a unit on a path is
  *     {@link UnitState#MOVING}.</li>
  * <li>Speed = baseSpeed x slope factor x road factor (1.35 for vehicles,
  *     1.1 for infantry, 1.0 off-road) x {@code weather.speedFactor} x
@@ -70,8 +74,8 @@ import ua.battlesim.api.WeatherModel;
  */
 public final class StandardMovementSystem implements MovementSystem {
 
-    /** Simulation step: time = tick x 0.1 s. */
-    private static final double STEP_SECONDS = 0.1;
+    /** Standard simulation step: time = tick x 0.1 s. */
+    public static final double DEFAULT_STEP_SECONDS = 0.1;
 
     /** A waypoint is considered reached within this radius (metres). */
     private static final double ARRIVAL_RADIUS = 6.0;
@@ -139,6 +143,35 @@ public final class StandardMovementSystem implements MovementSystem {
      */
     private int lastStepTick = Integer.MAX_VALUE;
 
+    /** Simulated seconds per tick (time = tick x stepSeconds). */
+    private final double stepSeconds;
+
+    /** Uses the standard 0.1 s step. */
+    public StandardMovementSystem() {
+        this(DEFAULT_STEP_SECONDS);
+    }
+
+    /**
+     * @param stepSeconds simulated seconds per tick, finite and {@code > 0}
+     *                    (scales the per-tick speed and heading turn)
+     * @throws IllegalArgumentException if {@code stepSeconds} is not finite
+     *         and positive
+     */
+    public StandardMovementSystem(double stepSeconds) {
+        if (!Double.isFinite(stepSeconds) || stepSeconds <= 0.0) {
+            throw new IllegalArgumentException("stepSeconds must be finite and > 0: " + stepSeconds);
+        }
+        this.stepSeconds = stepSeconds;
+    }
+
+    /**
+     * @param config the round configuration (non-null); the step comes from
+     *               {@code stepSeconds}
+     */
+    public StandardMovementSystem(SimConfig config) {
+        this(config.stepSeconds());
+    }
+
     @Override
     public void step(int tick, List<UnitData> units, Terrain t, WeatherModel w) {
         if (tick < 0) {
@@ -173,10 +206,12 @@ public final class StandardMovementSystem implements MovementSystem {
         Motion m = motions.computeIfAbsent(unit.id(), id -> new Motion(unit));
 
         // 1) Resolve the pursuit target (hysteresis: keep it until another
-        //    enemy is at least 40 percent closer and reachable).
+        //    enemy is at least 40 percent closer and reachable). A target
+        //    that was destroyed since the last tick is rejected and the unit
+        //    re-acquires a living one.
         boolean targetChanged = false;
         UnitData target = currentTarget(m, ordered);
-        if (target == null || !sameComponent(nav, unit, target)) {
+        if (target == null || !isActive(target) || !sameComponent(nav, unit, target)) {
             target = bestEnemy(unit, ordered, nav, planner, Double.POSITIVE_INFINITY);
             if (target != null) {
                 m.setTarget(target.id());
@@ -199,8 +234,11 @@ public final class StandardMovementSystem implements MovementSystem {
             return;
         }
 
-        // 2) In weapon range: hold position (combat resolves the engagement).
-        if (distance(unit.x(), unit.z(), target.x(), target.z()) <= stopRange(unit, w)) {
+        // 2) In weapon range with a clear line of sight: hold position
+        // (combat resolves the engagement). If the target is hidden by
+        // terrain the unit keeps pursuing (goes around) instead of holding.
+        if (distance(unit.x(), unit.z(), target.x(), target.z()) <= stopRange(unit, w)
+                && losClear(t, unit, target)) {
             unit.setState(UnitState.READY);
             refreshStuckReference(unit, m, tick);
             return;
@@ -258,7 +296,7 @@ public final class StandardMovementSystem implements MovementSystem {
         unit.setState(UnitState.MOVING);
     }
 
-    private static Vec2 firstClearCandidate(UnitData unit, List<UnitData> ordered, NavGrid nav, Terrain t,
+    private Vec2 firstClearCandidate(UnitData unit, List<UnitData> ordered, NavGrid nav, Terrain t,
             WeatherModel w, double desired, double maxStep, boolean ignoreWrecks) {
         double deflectionStep = MAX_DEFLECTION / DEFLECTION_STEPS;
         for (int k = 0; k <= DEFLECTION_STEPS; k++) {
@@ -286,7 +324,7 @@ public final class StandardMovementSystem implements MovementSystem {
         return null;
     }
 
-    private static Vec2 candidatePosition(UnitData unit, List<UnitData> ordered, NavGrid nav, Terrain t,
+    private Vec2 candidatePosition(UnitData unit, List<UnitData> ordered, NavGrid nav, Terrain t,
             WeatherModel w, double angle, double desired, double maxStep, boolean ignoreWrecks) {
         double dx = StrictMath.cos(angle);
         double dz = StrictMath.sin(angle);
@@ -295,13 +333,13 @@ public final class StandardMovementSystem implements MovementSystem {
             return null;
         }
         double base = UnitInfo.of(unit.type()).speed();
-        double slope = slopeFactor(t, unit.x(), unit.z(), dx, dz, base * STEP_SECONDS);
+        double slope = slopeFactor(t, unit.x(), unit.z(), dx, dz, base * stepSeconds);
         double road = roadFactor(nav, unit);
         double speed = base * slope * road * w.speedFactor(dx, dz) * alignment;
         if (speed <= 0.0) {
             return null;
         }
-        double dist = StrictMath.min(speed * STEP_SECONDS, maxStep);
+        double dist = StrictMath.min(speed * stepSeconds, maxStep);
         double x = clamp(unit.x() + dx * dist, 0.0, t.size());
         double z = clamp(unit.z() + dz * dist, 0.0, t.size());
         if (!nav.walkable(x, z, UnitInfo.of(unit.type()).radius())) {
@@ -353,7 +391,17 @@ public final class StandardMovementSystem implements MovementSystem {
 
     /** The effective weapon range the unit stops at (the combat system's range). */
     private static double stopRange(UnitData unit, WeatherModel w) {
-        return StrictMath.min(UnitInfo.of(unit.type()).range() * w.combatFactor(), w.visibility());
+        return StrictMath.min(UnitInfo.of(unit.type()).range() * w.combatFactor(), w.visibilityMetres());
+    }
+
+    /**
+     * @return whether the line of sight from the unit to the target is clear
+     *         (eye heights from {@link UnitInfo})
+     */
+    private static boolean losClear(Terrain t, UnitData unit, UnitData target) {
+        return t.los().visible(
+                new Vec2(unit.x(), unit.z()), UnitInfo.of(unit.type()).eyeHeight(),
+                new Vec2(target.x(), target.z()), UnitInfo.of(target.type()).eyeHeight());
     }
 
     /** @return whether the unit still acts (alive and not destroyed) */
@@ -362,8 +410,8 @@ public final class StandardMovementSystem implements MovementSystem {
     }
 
     /** Turns the unit's heading toward {@code desired} along the shortest arc. */
-    private static void turnToward(UnitData unit, double desired) {
-        double maxStep = UnitInfo.of(unit.type()).turnRate() * STEP_SECONDS;
+    private void turnToward(UnitData unit, double desired) {
+        double maxStep = UnitInfo.of(unit.type()).turnRate() * stepSeconds;
         double delta = normalizeAngle(desired - unit.heading());
         if (StrictMath.abs(delta) <= maxStep) {
             unit.setHeading(desired);

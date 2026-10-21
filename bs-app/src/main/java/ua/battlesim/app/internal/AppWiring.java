@@ -7,7 +7,9 @@ import ua.battlesim.api.EngineFactory;
 import ua.battlesim.api.MovementSystem;
 import ua.battlesim.api.ScenarioFactory;
 import ua.battlesim.api.SimConfig;
+import ua.battlesim.api.SystemProvider;
 import ua.battlesim.api.TerrainService;
+import ua.battlesim.api.WeatherFactory;
 import ua.battlesim.combat.StandardCombatSystem;
 import ua.battlesim.engine.DefaultEngineFactory;
 import ua.battlesim.movement.StandardMovementSystem;
@@ -43,8 +45,8 @@ public final class AppWiring {
 
     private final SimConfig config;
     private final AppTerrainService terrainService;
-    private final StandardCombatSystem combatSystem;
-    private final StandardMovementSystem movementSystem;
+    private final SystemProvider<CombatSystem> combatProvider;
+    private final SystemProvider<MovementSystem> movementProvider;
     private final StandardScenarioFactory scenarioFactory;
     private final DefaultEngineFactory engineFactory;
     private final SimpleWeatherModel weatherDisplay;
@@ -56,11 +58,13 @@ public final class AppWiring {
     public AppWiring(SimConfig config, long masterSeed) {
         this.config = Objects.requireNonNull(config, "config");
         this.terrainService = new AppTerrainService(config);
-        this.combatSystem = new StandardCombatSystem();
-        this.movementSystem = new StandardMovementSystem();
-        this.scenarioFactory = new StandardScenarioFactory(terrainService, config);
-        this.engineFactory = new DefaultEngineFactory(combatSystem, movementSystem);
-        this.weatherDisplay = new SimpleWeatherModel(masterSeed, config.weatherEnabled());
+        this.combatProvider = cfg -> new StandardCombatSystem();
+        this.movementProvider = cfg -> new StandardMovementSystem();
+        this.scenarioFactory = new StandardScenarioFactory(terrainService, config,
+                (seed, cfg) -> new SimpleWeatherModel(seed, cfg.weatherEnabled(), cfg.stepSeconds()));
+        this.engineFactory = new DefaultEngineFactory(combatProvider, movementProvider);
+        this.weatherDisplay = new SimpleWeatherModel(masterSeed, config.weatherEnabled(),
+                config.stepSeconds());
     }
 
     /** @return the round configuration */
@@ -73,14 +77,14 @@ public final class AppWiring {
         return terrainService;
     }
 
-    /** @return the combat rules */
-    public CombatSystem combatSystem() {
-        return combatSystem;
+    /** @return the combat rules provider (each engine gets a fresh system) */
+    public SystemProvider<CombatSystem> combatProvider() {
+        return combatProvider;
     }
 
-    /** @return the movement rules */
-    public MovementSystem movementSystem() {
-        return movementSystem;
+    /** @return the movement rules provider (each engine gets a fresh system) */
+    public SystemProvider<MovementSystem> movementProvider() {
+        return movementProvider;
     }
 
     /** @return the scenario factory over the terrain service */

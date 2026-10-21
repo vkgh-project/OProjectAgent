@@ -65,12 +65,12 @@ final class DeterminismTest {
         FakeCombatSystem c1 = new FakeCombatSystem();
         FakeMovementSystem m1 = new FakeMovementSystem();
         m1.setMoveOffset(3.0);
-        Engine e1 = new DefaultEngineFactory(c1, m1).start(s1, config());
+        Engine e1 = new DefaultEngineFactory(cfg -> c1, cfg -> m1).start(s1, config());
 
         FakeCombatSystem c2 = new FakeCombatSystem();
         FakeMovementSystem m2 = new FakeMovementSystem();
         m2.setMoveOffset(3.0);
-        Engine e2 = new DefaultEngineFactory(c2, m2).start(s2, config());
+        Engine e2 = new DefaultEngineFactory(cfg -> c2, cfg -> m2).start(s2, config());
 
         for (int i = 0; i < ticks; i++) {
             e1.tick();
@@ -87,7 +87,7 @@ final class DeterminismTest {
         FakeMovementSystem movement = new FakeMovementSystem();
         movement.setMoveOffset(10.0);
 
-        Engine engine = new DefaultEngineFactory(combat, movement).start(standardSetup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(standardSetup(), config());
 
         long hashBefore = engine.stateHash();
 
@@ -103,7 +103,7 @@ final class DeterminismTest {
         FakeCombatSystem combat = new FakeCombatSystem();
         FakeMovementSystem movement = new FakeMovementSystem();
         movement.setMoveOffset(2.0);
-        Engine engine = new DefaultEngineFactory(combat, movement).start(standardSetup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(standardSetup(), config());
 
         long[] hashes = new long[nTicks];
         for (int i = 0; i < nTicks; i++) {

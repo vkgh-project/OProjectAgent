@@ -10,12 +10,14 @@ import java.util.concurrent.Executors;
 
 import ua.battlesim.api.Engine;
 import ua.battlesim.api.EngineFactory;
+import ua.battlesim.api.GenerationStatus;
 import ua.battlesim.api.Outcome;
 import ua.battlesim.api.Phase;
 import ua.battlesim.api.RenderSnapshot;
 import ua.battlesim.api.RoundSetup;
 import ua.battlesim.api.ScenarioFactory;
 import ua.battlesim.api.Session;
+import ua.battlesim.api.SessionEvent;
 import ua.battlesim.api.SessionView;
 import ua.battlesim.api.SimConfig;
 import ua.battlesim.api.SimEvent;
@@ -77,7 +79,8 @@ public final class DefaultSession implements Session, AutoCloseable {
     private double accumulator;
     private boolean paused;
     private double speed = 1.0;
-    private final List<SimEvent> pendingEvents = new ArrayList<>();
+    private final List<SessionEvent> pendingEvents = new ArrayList<>();
+    private long nextSequence = 1L;
     private int intermissionTicks;
     private int roundTicks;
     // Aggregate statistics (guarded by {@link #lock}).
@@ -95,6 +98,8 @@ public final class DefaultSession implements Session, AutoCloseable {
     private final Object handoff = new Object();
     private Prefetch prefetched;
     private boolean prefetchPending;
+    private String generationFailure;
+    private boolean closed;
 
     /**
      * Creates a session whose round 1 is built synchronously (so {@link #view()}
@@ -128,7 +133,9 @@ public final class DefaultSession implements Session, AutoCloseable {
             this.roundNumber = 1;
             this.terrain = first.terrain();
             this.engine = firstEngine;
-            this.pendingEvents.addAll(firstEngine.drainEvents());
+            for (SimEvent event : firstEngine.drainEvents()) {
+                this.pendingEvents.add(new SessionEvent(1, this.nextSequence++, event));
+            }
         }
         submitPrefetchIfNeeded(2);
     }
@@ -182,6 +189,9 @@ public final class DefaultSession implements Session, AutoCloseable {
 
     @Override
     public SessionView view() {
+        if (closed) {
+            throw new IllegalStateException("session is closed");
+        }
         synchronized (lock) {
             RenderSnapshot snapshot = engine.snapshot();
             int blue = 0;
@@ -195,11 +205,55 @@ public final class DefaultSession implements Session, AutoCloseable {
                     }
                 }
             }
-            List<SimEvent> events = List.copyOf(pendingEvents);
-            pendingEvents.clear();   // deliver drained events exactly once
+            // Read-only: pending events stay pending until drainEvents().
+            List<SessionEvent> events = List.copyOf(pendingEvents);
+            GenerationStatus generation = generationStatus();
             return new SessionView(phase, roundNumber, terrain, snapshot,
-                    accumulator / step, new Stats(blue, red), events, paused, speed);
+                    accumulator / step, new Stats(blue, red), events, paused, speed, generation);
         }
+    }
+
+    @Override
+    public List<SessionEvent> drainEvents() {
+        if (closed) {
+            throw new IllegalStateException("session is closed");
+        }
+        synchronized (lock) {
+            List<SessionEvent> out = List.copyOf(pendingEvents);
+            pendingEvents.clear();
+            return out;
+        }
+    }
+
+    @Override
+    public void retryGeneration() {
+        synchronized (lock) {
+            synchronized (handoff) {
+                generationFailure = null;
+                if (prefetchPending) {
+                    return;   // a generation attempt is already in flight
+                }
+            }
+            submitPrefetchIfNeeded(roundNumber + 1);
+        }
+    }
+
+    /**
+     * The current background-generation status (guarded by {@link #handoff}).
+     */
+    private GenerationStatus generationStatus() {
+        synchronized (handoff) {
+            return new GenerationStatus(roundNumber + 1, prefetchPending, generationFailure);
+        }
+    }
+
+    /** Releases the daemon worker thread and stops background generation. */
+    @Override
+    public void close() {
+        synchronized (lock) {
+            closed = true;
+        }
+        worker.shutdownNow();
     }
 
     /**
@@ -213,12 +267,6 @@ public final class DefaultSession implements Session, AutoCloseable {
         }
     }
 
-    /** Releases the daemon worker thread. */
-    @Override
-    public void close() {
-        worker.shutdown();
-    }
-
 
     /** Advances the session by exactly one fixed step (called while holding {@link #lock}). */
     private void tickOnce() {
@@ -226,7 +274,9 @@ public final class DefaultSession implements Session, AutoCloseable {
             case RUNNING -> {
                 engine.tick();
                 roundTicks++;
-                pendingEvents.addAll(engine.drainEvents());
+                for (SimEvent event : engine.drainEvents()) {
+                    pendingEvents.add(new SessionEvent(roundNumber, nextSequence++, event));
+                }
                 if (engine.finished()) {
                     recordOutcome(engine.outcome());
                     phase = Phase.INTERMISSION;
@@ -237,12 +287,23 @@ public final class DefaultSession implements Session, AutoCloseable {
                 if (intermissionTicks > 0) {
                     intermissionTicks--;
                 } else {
+                    // The intermission has elapsed: adopt the round as soon as
+                    // it is ready, otherwise wait in GENERATING.
                     Prefetch ready = takePrefetch();
                     if (ready == null) {
+                        phase = Phase.GENERATING;
                         submitPrefetchIfNeeded(roundNumber + 1);   // stay and wait
                     } else {
                         adoptRound(ready);
                     }
+                }
+            }
+            case GENERATING -> {
+                Prefetch ready = takePrefetch();
+                if (ready == null) {
+                    submitPrefetchIfNeeded(roundNumber + 1);   // still waiting
+                } else {
+                    adoptRound(ready);
                 }
             }
             case FINISHED -> {
@@ -272,8 +333,9 @@ public final class DefaultSession implements Session, AutoCloseable {
         this.roundNumber = p.round();
         this.terrain = p.setup().terrain();
         this.engine = p.engine();
-        this.pendingEvents.clear();
-        this.pendingEvents.addAll(p.engine().drainEvents());   // any initial events
+        for (SimEvent event : p.engine().drainEvents()) {
+            pendingEvents.add(new SessionEvent(p.round(), nextSequence++, event));
+        }
         this.roundTicks = 0;
         this.phase = Phase.RUNNING;
         submitPrefetchIfNeeded(p.round() + 1);
@@ -285,6 +347,9 @@ public final class DefaultSession implements Session, AutoCloseable {
      */
     private void submitPrefetchIfNeeded(int targetRound) {
         synchronized (handoff) {
+            if (closed) {
+                return;   // the session is going away
+            }
             if (prefetched != null || prefetchPending) {
                 return;   // already have one, or already generating it
             }
@@ -295,11 +360,15 @@ public final class DefaultSession implements Session, AutoCloseable {
                 RoundSetup setup = scenarioFactory.create(masterSeed, targetRound);
                 Engine engine = engineFactory.start(setup, cfg);
                 synchronized (handoff) {
+                    if (closed) {
+                        return;   // do not publish into a closed session
+                    }
                     this.prefetched = new Prefetch(targetRound, setup, engine);
                     this.prefetchPending = false;
                 }
             } catch (RuntimeException e) {
                 synchronized (handoff) {
+                    this.generationFailure = String.valueOf(e);   // surface the failure
                     this.prefetchPending = false;   // allow a later retry
                 }
             }

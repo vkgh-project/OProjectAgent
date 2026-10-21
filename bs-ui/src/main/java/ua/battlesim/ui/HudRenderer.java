@@ -214,7 +214,7 @@ public final class HudRenderer {
     private static String stateKey(Phase phase, boolean paused) {
         return switch (phase) {
             case RUNNING -> paused ? "state_paused" : "state_running";
-            case INTERMISSION -> "state_generating";
+            case INTERMISSION, GENERATING -> "state_generating";
             case FINISHED -> "state_finished";
         };
     }

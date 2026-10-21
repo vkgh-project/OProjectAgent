@@ -35,7 +35,7 @@ final class FakeWeather implements WeatherModel {
     public double speedFactor(double dirX, double dirZ) { return 1.0; }
 
     @Override
-    public double visibility() { return 1.0; }
+    public double visibilityMetres() { return 1000.0; }
 
     @Override
     public double combatFactor() { return 1.0; }

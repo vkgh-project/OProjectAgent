@@ -2,6 +2,9 @@ package ua.battlesim.scenario;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static ua.battlesim.api.Side.BLUE;
@@ -31,7 +34,11 @@ final class StandardScenarioFactoryTest {
     private static final double EPS = 1e-9;
 
     private static StandardScenarioFactory factory(SimConfig cfg, TerrainService terrain) {
-        return new StandardScenarioFactory(terrain, cfg);
+        return new StandardScenarioFactory(terrain, cfg, weatherFactory());
+    }
+
+    private static ua.battlesim.api.WeatherFactory weatherFactory() {
+        return (seed, config) -> new FakeWeatherModel(seed);
     }
 
     @Test
@@ -171,40 +178,38 @@ final class StandardScenarioFactoryTest {
         RoundSetup a = f.create(555L, 2);
         RoundSetup b = f.create(555L, 2);
         RoundSetup c = f.create(556L, 2);
-        boolean differsFromOtherMaster = false;
-        for (int tick = 0; tick < 30; tick++) {
-            a.weather().step(tick);
-            b.weather().step(tick);
-            c.weather().step(tick);
-            assertEquals(a.weather().state(), b.weather().state(),
-                    "same master seed and round must give the same weather at tick " + tick);
-            differsFromOtherMaster |= !a.weather().state().equals(c.weather().state());
-        }
-        assertTrue(differsFromOtherMaster,
-                "different master seeds must give different weather");
+        // The fake model is a pure function of its construction seed: the
+        // same (master seed, round) must yield the same weather seed, and a
+        // different master seed a different one.
+        assertEquals(((FakeWeatherModel) a.weather()).seed(), ((FakeWeatherModel) b.weather()).seed(),
+                "same master seed and round must give the same weather seed");
+        assertNotEquals(((FakeWeatherModel) a.weather()).seed(), ((FakeWeatherModel) c.weather()).seed(),
+                "different master seeds must give different weather seeds");
+        assertNotSame(a.weather(), b.weather(), "every create must ask the factory for a fresh model");
+        assertEquals(a.weather().state(), b.weather().state());
     }
 
     @Test
-    void disabledWeatherIsPermanentlyClear() {
-        SimConfig cfg = new SimConfig(2000.0, 0.1, 20, 18000, 20, 1, 20, false);
-        RoundSetup setup = factory(cfg, new FakeTerrainService()).create(31337L, 1);
-        for (int tick = 0; tick < 10; tick++) {
-            setup.weather().step(tick);
-            assertEquals(0.0, setup.weather().state().rain(), 0.0);
-            assertEquals(0.0, setup.weather().state().heavyRain(), 0.0);
-            assertEquals(0.0, setup.weather().state().snow(), 0.0);
-            assertEquals(1.0, setup.weather().speedFactor(1.0, 0.0), 0.0);
-            assertEquals(1.0, setup.weather().visibility(), 0.0);
-            assertEquals(1.0, setup.weather().combatFactor(), 0.0);
-        }
+    void weatherFactoryReceivesTheConfig() {
+        SimConfig cfg = new SimConfig(2000.0, 0.25, 30, 18000, 20, 1, 20, false);
+        final SimConfig[] seen = new SimConfig[1];
+        StandardScenarioFactory f = new StandardScenarioFactory(
+                new FakeTerrainService(), cfg, (seed, config) -> {
+                    seen[0] = config;
+                    return new FakeWeatherModel(seed);
+                });
+        f.create(31337L, 1);
+        assertSame(cfg, seen[0], "the round configuration must be passed to the weather factory");
     }
 
     @Test
     void constructorAndCreateValidateArguments() {
         assertThrows(NullPointerException.class,
-                () -> new StandardScenarioFactory(null, SimConfig.defaults()));
+                () -> new StandardScenarioFactory(null, SimConfig.defaults(), weatherFactory()));
         assertThrows(NullPointerException.class,
-                () -> new StandardScenarioFactory(new FakeTerrainService(), null));
+                () -> new StandardScenarioFactory(new FakeTerrainService(), null, weatherFactory()));
+        assertThrows(NullPointerException.class,
+                () -> new StandardScenarioFactory(new FakeTerrainService(), SimConfig.defaults(), null));
         StandardScenarioFactory f = factory(SimConfig.defaults(), new FakeTerrainService());
         assertThrows(IllegalArgumentException.class, () -> f.create(1L, 0));
         assertThrows(IllegalArgumentException.class, () -> f.create(1L, -3));

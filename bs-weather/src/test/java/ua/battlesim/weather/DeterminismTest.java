@@ -30,7 +30,7 @@ class DeterminismTest {
         assertEquals(a.state(), b.state());
         assertEquals(a.speedFactor(1.0, 0.0), b.speedFactor(1.0, 0.0));
         assertEquals(a.speedFactor(0.0, 1.0), b.speedFactor(0.0, 1.0));
-        assertEquals(a.visibility(), b.visibility());
+        assertEquals(a.visibilityMetres(), b.visibilityMetres());
         assertEquals(a.combatFactor(), b.combatFactor());
         assertEquals(a.conditions(), b.conditions());
     }

@@ -58,9 +58,9 @@ class FactorsTest {
             WeatherState s = m.state();
             double expected = 25000.0 / (1.0 + 5.0 * s.rain()
                     + 24.0 * s.heavyRain() + 10.0 * s.snow());
-            assertEquals(expected, m.visibility(), 0.0, "tick " + tick);
-            assertTrue(m.visibility() >= 25000.0 / 45.0 && m.visibility() <= 25000.0,
-                    "tick " + tick + " visibility out of range: " + m.visibility());
+            assertEquals(expected, m.visibilityMetres(), 0.0, "tick " + tick);
+            assertTrue(m.visibilityMetres() >= 25000.0 / 45.0 && m.visibilityMetres() <= 25000.0,
+                    "tick " + tick + " visibility out of range: " + m.visibilityMetres());
         }
     }
 
@@ -112,7 +112,7 @@ class FactorsTest {
             assertTrue(f >= 0.992 && f <= 1.008, "dir " + d[0] + "," + d[1]
                     + " factor " + f + " outside [0.992, 1.008]");
         }
-        assertEquals(25000.0, m.visibility());
+        assertEquals(25000.0, m.visibilityMetres());
         assertEquals(1.0, m.combatFactor());
         assertEquals(java.util.List.of("Sunny"), m.conditions());
     }

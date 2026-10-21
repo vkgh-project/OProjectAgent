@@ -45,7 +45,7 @@ final class PhaseOrderTest {
         FakeWeather weather = new FakeWeather();
 
         RoundSetup s = setupWith(weather);
-        Engine engine = new DefaultEngineFactory(combat, movement).start(s, config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(s, config());
 
         // Run through all ready ticks
         for (int i = 0; i < READY_TICKS; i++) {
@@ -64,7 +64,7 @@ final class PhaseOrderTest {
         FakeCombatSystem combat = new FakeCombatSystem();
         FakeMovementSystem movement = new FakeMovementSystem();
 
-        Engine engine = new DefaultEngineFactory(combat, movement).start(setup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(setup(), config());
 
         // Advance past ready phase
         for (int i = 0; i < READY_TICKS; i++) {
@@ -84,7 +84,7 @@ final class PhaseOrderTest {
         FakeCombatSystem combat = new FakeCombatSystem();
         FakeMovementSystem movement = new FakeMovementSystem();
 
-        Engine engine = new DefaultEngineFactory(combat, movement).start(setup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(setup(), config());
         assertFalse(engine.finished());
 
         engine.tick();
@@ -104,7 +104,7 @@ final class PhaseOrderTest {
         FakeMovementSystem movement = new FakeMovementSystem();
         movement.setMoveOffset(10.0);
 
-        Engine engine = new DefaultEngineFactory(combat, movement).start(setup(), config());
+        Engine engine = new DefaultEngineFactory(cfg -> combat, cfg -> movement).start(setup(), config());
 
         // Advance past ready phase so movement happens
         for (int i = 0; i <= READY_TICKS; i++) {

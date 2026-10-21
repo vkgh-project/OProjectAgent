@@ -16,6 +16,12 @@ public enum Phase {
      */
     INTERMISSION,
     /**
+     * The intermission has elapsed but the next round is not ready yet (still
+     * generating, possibly after a failed attempt); the session is waiting
+     * for the worker thread.
+     */
+    GENERATING,
+    /**
      * A decisive outcome has been reached; the session has no more rounds.
      */
     FINISHED

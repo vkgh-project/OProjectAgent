@@ -146,7 +146,8 @@ class HudRendererTest {
         int blueRem = (int) units.stream().filter(u -> u.side() == Side.BLUE).count();
         int redRem = (int) units.stream().filter(u -> u.side() == Side.RED).count();
         return new SessionView(Phase.RUNNING, 1, makeTerrain(), snapshot, 0.5,
-                new Stats(blueRem, redRem), List.of(), false, 1.0);
+                new Stats(blueRem, redRem), List.of(), false, 1.0,
+                new GenerationStatus(2, false, null));
     }
 
     private static Terrain makeTerrain() {

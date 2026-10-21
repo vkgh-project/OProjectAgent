@@ -25,7 +25,15 @@ public interface NavGrid {
     /** @return the connected component id of cell (i, j) */
     int component(int i, int j);
 
-    /** @return the component id of the largest connected passable area */
+    /**
+     * The main connected component: the passable component preferred because
+     * it connects both spawn bands (the northern and southern 35 percent of
+     * the map, where BLUE and RED deploy); when no single component touches
+     * both bands the largest one is used. Passable cells belonging to it are
+     * the main landmass.
+     *
+     * @return the main component index (non-negative)
+     */
     int mainComponent();
 
     /**

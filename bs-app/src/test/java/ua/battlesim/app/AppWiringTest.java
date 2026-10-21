@@ -29,14 +29,14 @@ final class AppWiringTest {
     void wiresEveryCoreModule() {
         AppWiring wiring = new AppWiring(CFG, 99);
         assertNotNull(wiring.terrainService(), "terrain pipeline behind the contract");
-        assertNotNull(wiring.combatSystem(), "combat rules");
-        assertNotNull(wiring.movementSystem(), "movement rules");
+        assertNotNull(wiring.combatProvider(), "combat rules provider");
+        assertNotNull(wiring.movementProvider(), "movement rules provider");
         assertNotNull(wiring.scenarioFactory(), "scenario factory");
         assertNotNull(wiring.engineFactory(), "engine factory");
         assertNotNull(wiring.weatherDisplay(), "presentation weather model");
         assertFalse(wiring.weatherDisplay().conditions().isEmpty(),
                 "the weather model must report at least one condition");
-        assertTrue(wiring.weatherDisplay().visibility() > 0.0, "visibility must be positive");
+        assertTrue(wiring.weatherDisplay().visibilityMetres() > 0.0, "visibility must be positive");
         assertEquals(CFG, wiring.config());
     }
 

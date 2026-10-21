@@ -27,7 +27,7 @@ import ua.battlesim.api.WeatherModel;
  *     &gt; 0) decrements its cooldown (clamped at 0) and picks a target:
  *     the nearest enemy (opposite side, active) whose distance is at most
  *     {@code min(UnitInfo.range(type) x weather.combatFactor(),
- *     weather.visibility())} and that is visible through
+ *     weather.visibilityMetres())} metres and that is visible through
  *     {@code terrain.los()} (eye heights from {@link UnitInfo}); on an exact
  *     distance tie the lowest enemy id wins.</li>
  * <li>Units whose cooldown is now 0 shoot. All shots are collected first and
@@ -43,10 +43,13 @@ import ua.battlesim.api.WeatherModel;
  *
  * <p>A unit that has a target is set to {@link UnitState#ATTACKING} and
  * turns its aim toward that target at 3 rad/s for tanks and 4 rad/s
- * otherwise (per tick: rate x 0.1 s, taking the shortest arc and snapping to
- * the target direction once within one step). Units without a target are not
- * touched in state (movement/waiting states set earlier in the tick are
- * preserved).
+ * otherwise (per tick: rate x stepSeconds, taking the shortest arc and
+ * snapping to the target direction once within one step). A live unit
+ * without a valid target is not touched in state, except that a unit still
+ * in {@code ATTACKING} from a previous tick whose target is gone (destroyed
+ * or otherwise inactive) is reset to {@link UnitState#READY} so that
+ * movement can resume in the same tick (movement skips
+ * {@code ATTACKING} units).
  *
  * <p>Damage per hit is looked up in the shared {@link UnitInfo} table
  * (attacker type x target type); this class never redefines the table.
@@ -62,8 +65,8 @@ import ua.battlesim.api.WeatherModel;
  */
 public final class StandardCombatSystem implements CombatSystem {
 
-    /** Simulation step: time = tick x 0.1 s. */
-    private static final double STEP_SECONDS = 0.1;
+    /** Standard simulation step: time = tick x 0.1 s. */
+    public static final double DEFAULT_STEP_SECONDS = 0.1;
 
     /** Aim turn rate of a TANK in rad/s. */
     private static final double TANK_AIM_RATE = 3.0;
@@ -76,12 +79,15 @@ public final class StandardCombatSystem implements CombatSystem {
     /** Interval between consecutive shots of one unit, in ticks. */
     private final int attackIntervalTicks;
 
+    /** Simulated seconds per tick (time = tick x stepSeconds). */
+    private final double stepSeconds;
+
     /**
      * Builds the standard combat system with the default attack interval of
-     * {@link SimConfig#defaults()} (20 ticks).
+     * {@link SimConfig#defaults()} (20 ticks) and the standard 0.1 s step.
      */
     public StandardCombatSystem() {
-        this(SimConfig.defaults().attackIntervalTicks());
+        this(SimConfig.defaults().attackIntervalTicks(), DEFAULT_STEP_SECONDS);
     }
 
     /**
@@ -90,11 +96,35 @@ public final class StandardCombatSystem implements CombatSystem {
      * @throws IllegalArgumentException if the interval is not {@code >= 1}
      */
     public StandardCombatSystem(int attackIntervalTicks) {
+        this(attackIntervalTicks, DEFAULT_STEP_SECONDS);
+    }
+
+    /**
+     * @param attackIntervalTicks the interval between consecutive shots of
+     *            one unit in ticks, {@code >= 1}
+     * @param stepSeconds         simulated seconds per tick, finite and
+     *            {@code > 0} (scales the aim turn per tick)
+     * @throws IllegalArgumentException if either argument is out of range
+     */
+    public StandardCombatSystem(int attackIntervalTicks, double stepSeconds) {
         if (attackIntervalTicks < 1) {
             throw new IllegalArgumentException(
                     "attackIntervalTicks must be >= 1 (ticks): " + attackIntervalTicks);
         }
+        if (!Double.isFinite(stepSeconds) || stepSeconds <= 0.0) {
+            throw new IllegalArgumentException("stepSeconds must be finite and > 0: " + stepSeconds);
+        }
         this.attackIntervalTicks = attackIntervalTicks;
+        this.stepSeconds = stepSeconds;
+    }
+
+    /**
+     * @param config the round configuration (non-null); the interval comes
+     *               from {@code attackIntervalTicks} and the step from
+     *               {@code stepSeconds}
+     */
+    public StandardCombatSystem(SimConfig config) {
+        this(config.attackIntervalTicks(), config.stepSeconds());
     }
 
     /** @return the interval between consecutive shots of one unit in ticks */
@@ -130,7 +160,7 @@ public final class StandardCombatSystem implements CombatSystem {
             }
             unit.setCooldown(Math.max(0, unit.cooldown() - 1));
             double range = Math.min(UnitInfo.range(unit.type()) * weather.combatFactor(),
-                    weather.visibility());
+                    weather.visibilityMetres());
             targets[i] = pickTargetIndex(unit, ordered, range, los);
         }
 
@@ -164,18 +194,23 @@ public final class StandardCombatSystem implements CombatSystem {
         }
 
         // Phase 4: aim and state of every unit that has a target (a unit
-        // killed this tick keeps DESTROYED).
+        // killed this tick keeps DESTROYED). A unit whose target was
+        // destroyed this tick (or is otherwise inactive) no longer has a
+        // valid target: a live unit in that situation is reset from
+        // ATTACKING to READY so that movement can resume in the same tick.
         for (int i = 0; i < n; i++) {
-            if (targets[i] < 0) {
-                continue;
-            }
             UnitData unit = ordered.get(i);
             if (!isActive(unit)) {
                 continue;
             }
-            unit.setState(UnitState.ATTACKING);
-            double rate = unit.type() == UnitType.TANK ? TANK_AIM_RATE : OTHER_AIM_RATE;
-            aimToward(unit, ordered.get(targets[i]), rate * STEP_SECONDS);
+            boolean hasTarget = targets[i] >= 0 && isActive(ordered.get(targets[i]));
+            if (hasTarget) {
+                unit.setState(UnitState.ATTACKING);
+                double rate = unit.type() == UnitType.TANK ? TANK_AIM_RATE : OTHER_AIM_RATE;
+                aimToward(unit, ordered.get(targets[i]), rate * stepSeconds);
+            } else if (unit.state() == UnitState.ATTACKING) {
+                unit.setState(UnitState.READY);
+            }
         }
 
         // Phase 5: shooters reload; consecutive shots are exactly the

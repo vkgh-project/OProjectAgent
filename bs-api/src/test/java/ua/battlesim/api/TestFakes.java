@@ -92,8 +92,8 @@ final class TestFakes {
                 return 1.0;
             }
 
-            public double visibility() {
-                return 1.0;
+            public double visibilityMetres() {
+                return 1000.0;
             }
 
             public double combatFactor() {

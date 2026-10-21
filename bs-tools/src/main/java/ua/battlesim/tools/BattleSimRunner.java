@@ -31,6 +31,7 @@ import ua.battlesim.movement.StandardMovementSystem;
 import ua.battlesim.scenario.StandardScenarioFactory;
 import ua.battlesim.session.DefaultSession;
 import ua.battlesim.tools.internal.WiredTerrainService;
+import ua.battlesim.weather.SimpleWeatherModel;
 
 /**
  * The headless Battle Sim runner (bs-tools): the composition root that wires the
@@ -85,10 +86,12 @@ public final class BattleSimRunner {
         // standard combat and movement, the standard scenario factory and the
         // default engine factory). bs-tools is the layer above all of them.
         this.terrainService = new WiredTerrainService(config);
-        this.scenarioFactory = new StandardScenarioFactory(terrainService, config);
+        this.scenarioFactory = new StandardScenarioFactory(terrainService, config,
+                (weatherSeed, cfg) ->
+                        new SimpleWeatherModel(weatherSeed, cfg.weatherEnabled(), cfg.stepSeconds()));
         this.combatSystem = new StandardCombatSystem();
         this.movementSystem = new StandardMovementSystem();
-        this.engineFactory = new DefaultEngineFactory(combatSystem, movementSystem);
+        this.engineFactory = new DefaultEngineFactory(cfg -> combatSystem, cfg -> movementSystem);
     }
 
     // ---- accessors to the wired components (useful for tests and the CLI) ----
@@ -168,7 +171,8 @@ public final class BattleSimRunner {
      *         motion
      */
     private EngineFactory freshEngineFactory() {
-        return new DefaultEngineFactory(new StandardCombatSystem(), new StandardMovementSystem());
+        return new DefaultEngineFactory(cfg -> new StandardCombatSystem(),
+                cfg -> new StandardMovementSystem());
     }
 
     /**

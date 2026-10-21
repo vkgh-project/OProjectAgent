@@ -11,9 +11,9 @@ import ua.battlesim.api.UnitData;
 import ua.battlesim.api.UnitInfo;
 import ua.battlesim.api.UnitState;
 import ua.battlesim.api.UnitType;
+import ua.battlesim.api.WeatherFactory;
 import ua.battlesim.api.WeatherModel;
 import ua.battlesim.math.DetRandom;
-import ua.battlesim.scenario.internal.RoundWeather;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,10 +50,12 @@ import java.util.Objects;
  * not destroyed, heading and aim toward the enemy side: {@code +pi/2}
  * (south, +z) for BLUE and {@code -pi/2} (north, -z) for RED.
  *
- * <p>Weather: a {@link RoundWeather} model seeded from the round seed
- * (bs-scenario implements the bs-api {@link WeatherModel} contract itself,
- * because same-layer modules never depend on each other); with
- * {@code SimConfig.weatherEnabled == false} the model is permanently clear.
+ * <p>Weather: the injected {@link WeatherFactory} creates the round's
+ * weather model, seeded from the round seed (bs-scenario never depends on a
+ * concrete weather module); with {@code SimConfig.weatherEnabled == false}
+ * the factory is expected to keep the model permanently clear. Each
+ * {@link #create} call asks the factory for a fresh model, so rounds and
+ * engines never share one.
  *
  * <p>Units: metres, seconds and radians throughout; x east, z south.
  *
@@ -92,14 +94,18 @@ public final class StandardScenarioFactory implements ScenarioFactory {
 
     private final TerrainService terrainService;
     private final SimConfig config;
+    private final WeatherFactory weatherFactory;
 
     /**
      * @param terrainService the injected terrain generator (non-null)
      * @param config         the round configuration (non-null)
+     * @param weatherFactory the injected weather model factory (non-null)
      */
-    public StandardScenarioFactory(TerrainService terrainService, SimConfig config) {
+    public StandardScenarioFactory(TerrainService terrainService, SimConfig config,
+            WeatherFactory weatherFactory) {
         this.terrainService = Objects.requireNonNull(terrainService, "terrainService");
         this.config = Objects.requireNonNull(config, "config");
+        this.weatherFactory = Objects.requireNonNull(weatherFactory, "weatherFactory");
     }
 
     /** @return the injected terrain service */
@@ -110,6 +116,11 @@ public final class StandardScenarioFactory implements ScenarioFactory {
     /** @return the round configuration */
     public SimConfig config() {
         return config;
+    }
+
+    /** @return the injected weather model factory */
+    public WeatherFactory weatherFactory() {
+        return weatherFactory;
     }
 
     @Override
@@ -137,8 +148,8 @@ public final class StandardScenarioFactory implements ScenarioFactory {
             }
         }
 
-        WeatherModel weather = new RoundWeather(
-                new DetRandom(roundSeed).fork(SALT_WEATHER).nextLong(), config.weatherEnabled());
+        WeatherModel weather = weatherFactory.create(
+                new DetRandom(roundSeed).fork(SALT_WEATHER).nextLong(), config);
         return new RoundSetup(roundNumber, roundSeed, terrain, units, weather);
     }
 

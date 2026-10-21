@@ -10,11 +10,13 @@ package ua.battlesim.api;
  * snapshot.
  *
  * <p>Units: tick in ticks (time = tick x stepSeconds); wind direction and
- * speed as in {@link WeatherState}; factors are dimensionless multipliers in
- * {@code [0, 1]}.
+ * speed as in {@link WeatherState}; the speed and combat factors are
+ * dimensionless multipliers; {@link #visibilityMetres()} is a distance in
+ * metres (finite, strictly positive).
  *
- * <p>Determinism: the same tick sequence must produce the same states; no
- * wall clock, no unseeded randomness.
+ * <p>Implementations are injected per round through a
+ * {@link WeatherFactory}; the same tick sequence must produce the same
+ * states — no wall clock, no unseeded randomness.
  */
 public interface WeatherModel {
 
@@ -37,8 +39,11 @@ public interface WeatherModel {
      */
     double speedFactor(double dirX, double dirZ);
 
-    /** @return the visibility multiplier in {@code [0, 1]} (1 = fully clear) */
-    double visibility();
+    /**
+     * @return the current visibility distance in metres: finite and strictly
+     *         positive (larger = clearer)
+     */
+    double visibilityMetres();
 
     /** @return the combat accuracy multiplier in {@code [0, 1]} (1 = no weather penalty) */
     double combatFactor();

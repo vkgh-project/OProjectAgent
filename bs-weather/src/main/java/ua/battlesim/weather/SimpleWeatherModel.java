@@ -26,8 +26,8 @@ import ua.battlesim.weather.internal.Precip;
  * <li>{@code speedFactor(dir) = 1 - 0.08 rain - 0.22 heavy - 0.18 snow
  *     - 0.10 snowCover - 0.05 puddles + 0.004 x tailwind}, clamped to
  *     {@code [0.4, 1.1]};</li>
- * <li>{@code visibility = 25000 / (1 + 5 rain + 24 heavy + 10 snow)} metres;</li>
- * <li>{@code combatFactor = clamp(visibility / 5000, 0.3, 1)}.</li>
+ * <li>{@code visibilityMetres() = 25000 / (1 + 5 rain + 24 heavy + 10 snow)} metres;</li>
+ * <li>{@code combatFactor = clamp(visibilityMetres() / 5000, 0.3, 1)}.</li>
  * </ul>
  *
  * <p>When constructed with {@code enabled = false} the weather is
@@ -44,14 +44,11 @@ import ua.battlesim.weather.internal.Precip;
  */
 public final class SimpleWeatherModel implements WeatherModel {
 
-    /** Simulation step: time = tick x 0.1 s. */
-    private static final double STEP_SECONDS = 0.1;
+    /** Standard simulation step: time = tick x 0.1 s. */
+    public static final double DEFAULT_STEP_SECONDS = 0.1;
 
     /** Blending time constant: 40 s. */
     private static final double BLEND_TAU_SECONDS = 40.0;
-
-    /** Per-tick approach factor {@code 1 - exp(-0.1 / 40)}. */
-    private static final double STEP = 1.0 - StrictMath.exp(-STEP_SECONDS / BLEND_TAU_SECONDS);
 
     /**
      * Convergence cutoff: channels within 1% of their target snap to it, so
@@ -71,14 +68,24 @@ public final class SimpleWeatherModel implements WeatherModel {
     private static final double NEXT_CHANGE_MIN_SECONDS = 120.0;
     private static final double NEXT_CHANGE_SPAN_SECONDS = 240.0;
 
-    /** Snow cover rises about 200 s to full while it snows. */
+    /** Snow cover rises about 200 s to full while it snows (per 0.1 s tick). */
     private static final double SNOW_COVER_GROWTH_PER_TICK = 0.0005;
 
-    /** Per-tick snow-cover decay factors (clear melts faster). */
+    /** Per-tick (0.1 s) snow-cover decay factors (clear melts faster). */
     private static final double SNOW_COVER_DECAY_CLEAR_PER_TICK = 0.010;
     private static final double SNOW_COVER_DECAY_OTHER_PER_TICK = 0.003;
 
     private final boolean enabled;
+
+    /** Simulated seconds per tick (time = tick x stepSeconds). */
+    private final double stepSeconds;
+
+    /** Per-tick approach factor {@code 1 - exp(-stepSeconds / 40)}. */
+    private final double step;
+
+    /** Time scale relative to the 0.1 s reference tick (1.0 at the default). */
+    private final double timeScale;
+
     private final DetRandom rng;
 
     /** Current precipitation regime (the active target). */
@@ -117,7 +124,28 @@ public final class SimpleWeatherModel implements WeatherModel {
      *                2 m/s wind; {@code true} enables the random evolution
      */
     public SimpleWeatherModel(long seed, boolean enabled) {
+        this(seed, enabled, DEFAULT_STEP_SECONDS);
+    }
+
+    /**
+     * @param seed         the deterministic seed; the same seed gives the same
+     *                     weather sequence
+     * @param enabled      {@code false} keeps the weather permanently clear
+     *                     with a 2 m/s wind; {@code true} enables the random
+     *                     evolution
+     * @param stepSeconds  simulated seconds per tick, finite and {@code > 0}
+     *                     (all time-dependent rates scale with it)
+     * @throws IllegalArgumentException if {@code stepSeconds} is not finite
+     *         and positive
+     */
+    public SimpleWeatherModel(long seed, boolean enabled, double stepSeconds) {
+        if (!Double.isFinite(stepSeconds) || stepSeconds <= 0.0) {
+            throw new IllegalArgumentException("stepSeconds must be finite and > 0: " + stepSeconds);
+        }
         this.enabled = enabled;
+        this.stepSeconds = stepSeconds;
+        this.step = 1.0 - StrictMath.exp(-stepSeconds / BLEND_TAU_SECONDS);
+        this.timeScale = stepSeconds / DEFAULT_STEP_SECONDS;
         this.rng = new DetRandom(seed);
         // Neutral, clear baseline.
         this.precip = Precip.CLEAR;
@@ -207,7 +235,7 @@ public final class SimpleWeatherModel implements WeatherModel {
             return;
         }
         lastTick = tick;
-        seconds += STEP_SECONDS;
+        seconds += stepSeconds;
         if (seconds >= nextChangeSeconds) {
             nextChangeSeconds = scheduleNextChange();
             drawTargets();
@@ -228,10 +256,10 @@ public final class SimpleWeatherModel implements WeatherModel {
         wetness = approach(wetness, wetnessTarget);
         puddles = approach(puddles, puddleTarget);
         if (precip == Precip.SNOW) {
-            snowCover = Math.min(1.0, snowCover + SNOW_COVER_GROWTH_PER_TICK);
+            snowCover = Math.min(1.0, snowCover + SNOW_COVER_GROWTH_PER_TICK * timeScale);
         } else {
-            double decay = precip == Precip.CLEAR ? SNOW_COVER_DECAY_CLEAR_PER_TICK
-                    : SNOW_COVER_DECAY_OTHER_PER_TICK;
+            double decay = (precip == Precip.CLEAR ? SNOW_COVER_DECAY_CLEAR_PER_TICK
+                    : SNOW_COVER_DECAY_OTHER_PER_TICK) * timeScale;
             snowCover = Math.max(0.0, snowCover * (1.0 - decay));
         }
     }
@@ -263,13 +291,13 @@ public final class SimpleWeatherModel implements WeatherModel {
     }
 
     @Override
-    public double visibility() {
+    public double visibilityMetres() {
         return 25000.0 / (1.0 + 5.0 * rain + 24.0 * heavyRain + 10.0 * snow);
     }
 
     @Override
     public double combatFactor() {
-        return clamp(visibility() / 5000.0, 0.3, 1.0);
+        return clamp(visibilityMetres() / 5000.0, 0.3, 1.0);
     }
 
     /**
@@ -300,16 +328,16 @@ public final class SimpleWeatherModel implements WeatherModel {
 
 
     /** Approaches {@code target} with the 40 s time constant; snaps on convergence. */
-    private static double approach(double value, double target) {
-        double next = value + (target - value) * STEP;
+    private double approach(double value, double target) {
+        double next = value + (target - value) * step;
         return Math.abs(next - target) < SNAP ? target : next;
     }
 
     /** Approaches an angular target along the shortest arc, then normalizes. */
-    private static double approachAngle(double value, double target) {
+    private double approachAngle(double value, double target) {
         double normalizedTarget = normalizeAngle(target);
         double diff = normalizedTarget - value;
-        double next = value + diff * STEP;
+        double next = value + diff * step;
         if (Math.abs(normalizeAngle(next - normalizedTarget)) < SNAP) {
             return normalizedTarget;
         }
