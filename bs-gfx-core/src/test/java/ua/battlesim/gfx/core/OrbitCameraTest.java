@@ -157,7 +157,10 @@ class OrbitCameraTest {
         for (int r = 0; r < 4; r++) {
             for (int c = 0; c < 4; c++) {
                 float expected = (r == c) ? 1.0f : 0.0f;
-                assertEquals(expected, product.get(r, c), 1e-4, "element [" + r + "][" + c + "]");
+                // 1e-3: VP has elements up to farPlane (1e4) with a near plane of 0.1, so its
+                // condition number is ~1e5 and a float round-trip (VP * VP^-1) legitimately
+                // deviates from identity by ~1e-4..1e-3. 1e-4 was too tight and flaky.
+                assertEquals(expected, product.get(r, c), 1e-3, "element [" + r + "][" + c + "]");
             }
         }
     }

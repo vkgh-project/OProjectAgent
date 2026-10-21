@@ -117,7 +117,10 @@ public final class ScreenProjection {
             double ly = cy - oy;
             double lz = cz - oz;
             double a = dx * dx + dy * dy + dz * dz;
-            double b = 2.0 * (lx * dx + ly * dy + lz * dz);
+            // Quadratic from |o + t*d - c|^2 = r^2 with l = c - o:
+            //   a = d.d, b = -2 d.l, c = l.l - r^2
+            // (the sign on b matters: a positive sign negates both roots)
+            double b = -2.0 * (lx * dx + ly * dy + lz * dz);
             double c = lx * lx + ly * ly + lz * lz - radius * radius;
             double discriminant = b * b - 4.0 * a * c;
             if (discriminant < 0.0) {

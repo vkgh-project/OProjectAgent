@@ -247,10 +247,32 @@ public final class OrbitCamera {
 
     private void updateMatrices() {
         Vector3f eye = eyePosition();
-        viewMatrix.lookAt(eye.x(), eye.y(), eye.z(), targetX, targetY, targetZ, 0.0f, 1.0f, 0.0f);
-        projectionMatrix.perspective(fovY, aspect, nearPlane, farPlane);
-        viewProjectionMatrix.mul(projectionMatrix, viewMatrix);
-        invViewProjectionMatrix.invert(viewProjectionMatrix);
+        // IMPORTANT (bugfix): in this joml build Matrix4f.perspective / lookAt act as a
+        // post-multiply (they append into the existing matrix content instead of setting
+        // it from scratch). Reusing the same Matrix4f buffer therefore compounded every
+        // updateMatrices() call: since setAspect() runs every frame and every interaction
+        // (pan/rotate/zoom/follow/reset) also calls it, viewMatrix & projectionMatrix
+        // multiplied into themselves frame after frame until they overflowed to +/-Infinity.
+        // That non-finite view-projection matrix then made the HUD projection (w division)
+        // produce -Infinity -> LayoutMath.markerRect crashed with "screen position must be
+        // finite: ..., -Infinity". Fix: normalize each buffer to identity first so the
+        // rebuild is idempotent (same camera state -> same matrices), regardless of whether
+        // the joml methods set or append.
+        viewMatrix.identity().lookAt(eye.x(), eye.y(), eye.z(), targetX, targetY, targetZ, 0.0f, 1.0f, 0.0f);
+        projectionMatrix.identity().perspective(fovY, aspect, nearPlane, farPlane);
+        // We want viewProjectionMatrix = projectionMatrix * viewMatrix (P * V).
+        //
+        // joml's two-arg mul is: receiver.mul(a, b)  ==>  b = receiver * a
+        // (the 2nd argument is the RESULT; verified empirically against joml 1.10.9:
+        //  A.translate(1,2,3).mul(B, R) gives R's translation (1,2,3) = A*B, and
+        //  B.mul(A, R) gives R's translation (10,40,90) = B*A).
+        // So to get P*V we make the PROJECTION the receiver:
+        projectionMatrix.mul(viewMatrix, viewProjectionMatrix);
+        // invViewProjectionMatrix = (P * V)^-1. IMPORTANT: joml's invert(m) short-circuits
+        // to "m.identity()" when the receiver is identity-flagged, which would WIPE the
+        // freshly-computed viewProjectionMatrix. So copy it in via set() and invert() in
+        // place (invert() = this^-1, never touches its argument).
+        invViewProjectionMatrix.set(viewProjectionMatrix).invert();
     }
 
     private static float clamp(float value, float min, float max) {

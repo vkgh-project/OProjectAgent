@@ -98,6 +98,7 @@ public final class HudOverlay implements AutoCloseable {
         }
         ensureGpu();
         vertexCount = 0;
+        vertexData.clear();   // reset the buffer position to 0 before writing this frame
 
         drawMainPanel(model, extraLines);
         drawMarkers(model);
