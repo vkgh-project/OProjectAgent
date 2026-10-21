@@ -100,4 +100,46 @@ class EffectsRendererTest {
     void capacityTooSmall_rejected() {
         assertThrows(IllegalArgumentException.class, () -> new EffectsRenderer(1L, 511));
     }
+
+    /**
+     * Regression: the partition scans must stay inside {@code [lo, hi]} —
+     * unguarded scans ran off the array end (ArrayIndexOutOfBoundsException)
+     * for some particle mixes, e.g. 11 live smoke/dust particles.
+     */
+    @Test
+    void sortIndicesByDistanceDesc_ordersFarToNearWithDeterministicTies() throws Exception {
+        java.lang.reflect.Method sort = EffectsRenderer.class.getDeclaredMethod(
+                "sortIndicesByDistanceDesc", double[].class, int[].class, int.class);
+        sort.setAccessible(true);
+
+        java.util.Random rnd = new java.util.Random(7);
+        for (int trial = 0; trial < 500; trial++) {
+            int n = 1 + rnd.nextInt(64);
+            double[] key = new double[n];
+            int[] idx = new int[n];
+            for (int k = 0; k < n; k++) {
+                key[k] = rnd.nextInt(6) * 1.0; // coarse values: forces ties
+                idx[k] = rnd.nextInt(1000);
+            }
+            int[] origIdx = idx.clone();
+            double[] origKey = key.clone();
+            Integer[] order = new Integer[n];
+            for (int k = 0; k < n; k++) {
+                order[k] = k;
+            }
+            java.util.Arrays.sort(order, (a, b) -> {
+                int c = Double.compare(origKey[b], origKey[a]); // farthest first
+                return c != 0 ? c : Integer.compare(origIdx[a], origIdx[b]);
+            });
+            int[] expect = new int[n];
+            for (int k = 0; k < n; k++) {
+                expect[k] = origIdx[order[k]];
+            }
+            sort.invoke(null, key, idx, n);
+            for (int k = 0; k < n; k++) {
+                assertEquals(expect[k], idx[k],
+                        "trial " + trial + ", position " + k);
+            }
+        }
+    }
 }

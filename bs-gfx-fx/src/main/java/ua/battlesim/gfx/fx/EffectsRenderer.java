@@ -344,17 +344,21 @@ public final class EffectsRenderer implements AutoCloseable {
             int j = hi;
             int pivotIdx = (lo + hi) >>> 1;
             double pivotKey = key[pivotIdx];
+            int pivotSlot = idx[pivotIdx];
             while (i <= j) {
-                while (compare(key, idx, i, pivotKey, pivotIdx) < 0) {
+                while (i < hi && compare(key, idx, i, pivotKey, pivotSlot) < 0) {
                     i++;
                 }
-                while (compare(key, idx, j, pivotKey, pivotIdx) > 0) {
+                while (j > lo && compare(key, idx, j, pivotKey, pivotSlot) > 0) {
                     j--;
                 }
                 if (i <= j) {
                     int tmp = idx[i];
                     idx[i] = idx[j];
                     idx[j] = tmp;
+                    double tmpKey = key[i];
+                    key[i] = key[j];
+                    key[j] = tmpKey;
                     i++;
                     j--;
                 }
@@ -373,12 +377,12 @@ public final class EffectsRenderer implements AutoCloseable {
         }
     }
 
-    private static int compare(double[] key, int[] idx, int i, double pivotKey, int pivotIdx) {
+    private static int compare(double[] key, int[] idx, int i, double pivotKey, int pivotSlot) {
         int c = Double.compare(key[i], pivotKey);
         if (c != 0) {
             return -c; // farthest first
         }
-        return Integer.compare(idx[i], pivotIdx);
+        return Integer.compare(idx[i], pivotSlot);
     }
 
     /**
